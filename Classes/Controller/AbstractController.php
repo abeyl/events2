@@ -26,8 +26,10 @@ namespace JWeiland\Events2\Controller;
  *  This copyright notice MUST APPEAR in all copies of the script!
  ***************************************************************/
 use JWeiland\Events2\Domain\Model\Event;
+use JWeiland\Events2\Domain\Model\Filter;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 use TYPO3\CMS\Core\Utility\MathUtility;
+use TYPO3\CMS\Extbase\Configuration\ConfigurationManagerInterface;
 use TYPO3\CMS\Extbase\Mvc\Controller\ActionController;
 use TYPO3\CMS\Extbase\Mvc\View\ViewInterface;
 use TYPO3\CMS\Extbase\Property\TypeConverter\PersistentObjectConverter;
@@ -205,7 +207,41 @@ class AbstractController extends ActionController
     }
 
     /**
-     * preprocessing of all actions.
+     * @param ConfigurationManagerInterface $configurationManager
+     * @return void
+     */
+    public function injectConfigurationManager(ConfigurationManagerInterface $configurationManager)
+    {
+        $this->configurationManager = $configurationManager;
+
+        $typoScriptSettings = $this->configurationManager->getConfiguration(
+            ConfigurationManagerInterface::CONFIGURATION_TYPE_FRAMEWORK,
+            'events2',
+            'events2_event'
+        );
+        $mergedFlexFormSettings = $this->configurationManager->getConfiguration(
+            ConfigurationManagerInterface::CONFIGURATION_TYPE_SETTINGS
+        );
+
+        // if FlexForm setting is empty and value is available in TS
+        foreach ($typoScriptSettings['settings'] as $fieldName => $value) {
+            if (
+                $mergedFlexFormSettings[$fieldName] === '0' ||
+                (
+                    is_string($mergedFlexFormSettings[$fieldName]) &&
+                    strlen($mergedFlexFormSettings[$fieldName]) === 0
+                )
+            ) {
+                $mergedFlexFormSettings[$fieldName] = $value;
+            }
+        }
+        $this->settings = $mergedFlexFormSettings;
+    }
+
+    /**
+     * PreProcessing of all actions.
+     *
+     * @return void
      */
     public function initializeAction()
     {
@@ -246,6 +282,25 @@ class AbstractController extends ActionController
         if ($this->settings['showFilterForOrganizerInFrontend']) {
             $this->view->assign('organizers', $this->organizerRepository->findAll());
         }
+    }
+
+    /**
+     * Validate filter
+     * Create empty filter if not valid
+     * Assign filter to view
+     *
+     * @param Filter|null $filter
+     * @return Filter
+     */
+    protected function validateAndAssignFilter($filter)
+    {
+        if (!$filter instanceof Filter ||
+            $filter === null
+        ) {
+            $filter = $this->objectManager->get('JWeiland\\Events2\\Domain\\Model\\Filter');
+        }
+        $this->view->assign('filter', $filter);
+        return $filter;
     }
 
     /**

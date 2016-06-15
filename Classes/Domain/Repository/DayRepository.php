@@ -6,7 +6,7 @@ namespace JWeiland\Events2\Domain\Repository;
  *  Copyright notice
  *
  *  (c) 2016 Stefan Froemken <projects@jweiland.net>, jweiland.net
- *  
+ *
  *  All rights reserved
  *
  *  This script is part of the TYPO3 project. The TYPO3 project is
@@ -25,19 +25,33 @@ namespace JWeiland\Events2\Domain\Repository;
  *
  *  This copyright notice MUST APPEAR in all copies of the script!
  ***************************************************************/
+use JWeiland\Events2\Domain\Model\Day;
+use JWeiland\Events2\Domain\Model\Event;
+use TYPO3\CMS\Backend\Utility\BackendUtility;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 use TYPO3\CMS\Core\Utility\MathUtility;
+use TYPO3\CMS\Extbase\Persistence\QueryInterface;
+use TYPO3\CMS\Extbase\Persistence\Repository;
 
 /**
  * @license http://www.gnu.org/licenses/gpl.html GNU General Public License, version 3 or later
  */
-class DayRepository extends \TYPO3\CMS\Extbase\Persistence\Repository
+class DayRepository extends Repository
 {
     /**
-     * @var \TYPO3\CMS\Extbase\Configuration\ConfigurationManagerInterface
-     * @inject
+     * @var \JWeiland\Events2\Utility\DateTimeUtility
      */
-    protected $configurationManager;
+    protected $dateTimeUtility = null;
+
+    /**
+     * inject DateTime Utility.
+     *
+     * @param \JWeiland\Events2\Utility\DateTimeUtility $dateTimeUtility
+     */
+    public function injectDateTimeUtility(\JWeiland\Events2\Utility\DateTimeUtility $dateTimeUtility)
+    {
+        $this->dateTimeUtility = $dateTimeUtility;
+    }
 
     /**
      * find all days.
@@ -48,11 +62,7 @@ class DayRepository extends \TYPO3\CMS\Extbase\Persistence\Repository
      */
     public function findAll($limit = 15)
     {
-        // get storagePid
-        $frameworkConfiguration = $this->configurationManager->getConfiguration(\TYPO3\CMS\Extbase\Configuration\ConfigurationManagerInterface::CONFIGURATION_TYPE_FRAMEWORK);
-        $storagePid = $frameworkConfiguration['persistence']['storagePid'];
-
-        $today = $this->createDateTime('today');
+        $today = $this->dateTimeUtility->convert('today');
 
         // create query and return results
         $query = $this->createQuery();
@@ -64,39 +74,35 @@ class DayRepository extends \TYPO3\CMS\Extbase\Persistence\Repository
 			LEFT JOIN tx_events2_domain_model_event ON tx_events2_event_day_mm.uid_local=tx_events2_domain_model_event.uid
 			WHERE FIND_IN_SET(tx_events2_domain_model_event.pid, ?)
 			AND tx_events2_domain_model_day.day > ?'.
-            \TYPO3\CMS\Backend\Utility\BackendUtility::BEenableFields('tx_events2_domain_model_event').
-            \TYPO3\CMS\Backend\Utility\BackendUtility::deleteClause('tx_events2_domain_model_event').
-            \TYPO3\CMS\Backend\Utility\BackendUtility::BEenableFields('tx_events2_domain_model_day').
-            \TYPO3\CMS\Backend\Utility\BackendUtility::deleteClause('tx_events2_domain_model_day').'
+            BackendUtility::BEenableFields('tx_events2_domain_model_event').
+            BackendUtility::deleteClause('tx_events2_domain_model_event').
+            BackendUtility::BEenableFields('tx_events2_domain_model_day').
+            BackendUtility::deleteClause('tx_events2_domain_model_day').'
 			ORDER BY tx_events2_domain_model_day.day ASC
 			LIMIT '.$limit,
             array(
-                $storagePid,
+                $query->getQuerySettings()->getStoragePageIds(),
                 $today->format('U'),
             )
         )->execute();
     }
 
     /**
-     * find all days with given categories.
+     * find all days where their related events are assigned to given categories.
      *
-     * @param string $categories comma seperated list of categories
+     * @param string $categories comma separated list of categories
      * @param int    $limit
      *
      * @return \TYPO3\CMS\Extbase\Persistence\QueryResultInterface
      */
     public function findAllByCategories($categories, $limit = 15)
     {
-        // get storagePid
-        $frameworkConfiguration = $this->configurationManager->getConfiguration(\TYPO3\CMS\Extbase\Configuration\ConfigurationManagerInterface::CONFIGURATION_TYPE_FRAMEWORK);
-        $storagePid = $frameworkConfiguration['persistence']['storagePid'];
-
         // create OR-Query for categories
         foreach (GeneralUtility::trimExplode(',', $categories) as $category) {
             $categoryOrQuery[] = 'sys_category_record_mm.uid_local IN (\''.(int) $category.'\')';
         }
 
-        $today = $this->createDateTime('today');
+        $today = $this->dateTimeUtility->convert('today');
 
         // create query and return results
         $query = $this->createQuery();
@@ -111,58 +117,32 @@ class DayRepository extends \TYPO3\CMS\Extbase\Persistence\Repository
 			AND sys_category_record_mm.tablenames = ?
 			AND FIND_IN_SET(tx_events2_domain_model_event.pid, ?)
 			AND tx_events2_domain_model_day.day > ?'.
-            \TYPO3\CMS\Backend\Utility\BackendUtility::BEenableFields('tx_events2_domain_model_event').
-            \TYPO3\CMS\Backend\Utility\BackendUtility::deleteClause('tx_events2_domain_model_event').
-            \TYPO3\CMS\Backend\Utility\BackendUtility::BEenableFields('tx_events2_domain_model_day').
-            \TYPO3\CMS\Backend\Utility\BackendUtility::deleteClause('tx_events2_domain_model_day').'
+            BackendUtility::BEenableFields('tx_events2_domain_model_event').
+            BackendUtility::deleteClause('tx_events2_domain_model_event').
+            BackendUtility::BEenableFields('tx_events2_domain_model_day').
+            BackendUtility::deleteClause('tx_events2_domain_model_day').'
 			ORDER BY tx_events2_domain_model_day.day ASC
 			LIMIT '.$limit,
             array(
                 'tx_events2_domain_model_event',
-                $storagePid,
+                $query->getQuerySettings()->getStoragePageIds(),
                 $today->format('U'),
             )
         )->execute();
     }
 
     /**
-     * Creates a DateTime from an unix timestamp or date/datetime value.
-     * If the input is empty, NULL is returned.
-     *
-     * @param int|string $value Unix timestamp or date/datetime value
-     *
-     * @return \DateTime
-     */
-    public function createDateTime($value)
-    {
-        if (empty($value)) {
-            return;
-        }
-        if (MathUtility::canBeInterpretedAsInteger($value)) {
-            $day = new \DateTime(date('c', $value));
-
-            return $day->modify('midnight');
-        } else {
-            // native date/datetime values are stored in UTC
-            $utcTimeZone = new \DateTimeZone('UTC');
-            $utcDateTime = new \DateTime($value, $utcTimeZone);
-            $currentTimeZone = new \DateTimeZone(date_default_timezone_get());
-
-            return $utcDateTime->setTimezone($currentTimeZone);
-        }
-    }
-
-    /**
      * If no day was given for an event
      * we have to try to find the next day for this event.
      *
-     * @param \JWeiland\Events2\Domain\Model\Event $event
+     * @param Event $event
      *
-     * @return \JWeiland\Events2\Domain\Model\Day
+     * @return Day
      */
-    public function getNextDayForEvent(\JWeiland\Events2\Domain\Model\Event $event)
+    public function getNextDayForEvent(Event $event)
     {
         $query = $this->createQuery();
+        $query->getQuerySettings()->setRespectStoragePage(false);
         $today = new \DateTime('today');
 
         $constraints = array();
@@ -176,15 +156,16 @@ class DayRepository extends \TYPO3\CMS\Extbase\Persistence\Repository
      * If no day was given for an event
      * we have to try to find the last day for this event.
      *
-     * @param \JWeiland\Events2\Domain\Model\Event $event
+     * @param Event $event
      *
-     * @return \JWeiland\Events2\Domain\Model\Day
+     * @return Day
      */
-    public function getLastDayForEvent(\JWeiland\Events2\Domain\Model\Event $event)
+    public function getLastDayForEvent(Event $event)
     {
         $query = $this->createQuery();
+        $query->getQuerySettings()->setRespectStoragePage(false);
         $query->setOrderings(array(
-            'day' => \TYPO3\CMS\Extbase\Persistence\QueryInterface::ORDER_DESCENDING,
+            'day' => QueryInterface::ORDER_DESCENDING,
         ));
 
         return $query->matching($query->equals('events.uid', $event))->execute()->getFirst();

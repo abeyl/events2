@@ -29,10 +29,14 @@ use JWeiland\Events2\Controller\EventController;
 use JWeiland\Events2\Domain\Model\Category;
 use JWeiland\Events2\Domain\Model\Day;
 use JWeiland\Events2\Domain\Model\Event;
+use JWeiland\Events2\Domain\Model\Filter;
 use JWeiland\Events2\Domain\Model\Location;
 use JWeiland\Events2\Domain\Model\Search;
 use TYPO3\CMS\Core\Tests\UnitTestCase;
+use TYPO3\CMS\Extbase\Configuration\ConfigurationManager;
+use TYPO3\CMS\Extbase\Object\ObjectManager;
 use TYPO3\CMS\Extbase\Persistence\ObjectStorage;
+use TYPO3\CMS\Fluid\View\TemplateView;
 
 /**
  * Test case.
@@ -65,8 +69,60 @@ class EventControllerTest extends UnitTestCase
     /**
      * @test
      */
+    public function injectConfigurationManagerOverridesFlexFormSettingsIfEmpty()
+    {
+        $typoScript = array(
+            'settings' => array(
+                'pidOfDetailPage' => '217',
+                'pidOfListPage' => '217',
+                'pidOfSearchPage' => '217',
+                'pidOfLocationPage' => '217',
+                'rootCategory' => '12'
+            )
+        );
+        $flexFormSettings = array(
+            'pidOfDetailPage' => '0',
+            'pidOfListPage' => '363',
+            'pidOfSearchPage' => '217',
+            'pidOfLocationPage' => '217',
+            'rootCategory' => '12'
+        );
+
+        /** @var ConfigurationManager|\PHPUnit_Framework_MockObject_MockObject $configurationManager */
+        $configurationManager = $this->getMock(ConfigurationManager::class, array('getConfiguration'), array(), '', false);
+        $configurationManager->expects($this->at(0))->method('getConfiguration')->with(
+            $this->identicalTo(ConfigurationManager::CONFIGURATION_TYPE_FRAMEWORK),
+            $this->identicalTo('events2'),
+            $this->identicalTo('events2_event')
+        )->willReturn($typoScript);
+        $configurationManager->expects($this->at(1))->method('getConfiguration')->with(
+            $this->identicalTo(ConfigurationManager::CONFIGURATION_TYPE_SETTINGS)
+        )->willReturn($flexFormSettings);
+
+        /** @var EventController|\PHPUnit_Framework_MockObject_MockObject|\TYPO3\CMS\Core\Tests\AccessibleObjectInterface $subject */
+        $subject = $this->getAccessibleMock(EventController::class, array('dummy'), array(), '', false);
+        $subject->injectConfigurationManager($configurationManager);
+
+        $expectedResult = array(
+            'pidOfDetailPage' => '217',
+            'pidOfListPage' => '363',
+            'pidOfSearchPage' => '217',
+            'pidOfLocationPage' => '217',
+            'rootCategory' => '12'
+        );
+
+        $this->assertSame(
+            $expectedResult,
+            $subject->_get('settings')
+        );
+    }
+
+    /**
+     * @test
+     */
     public function listActionFindEventsAndAssignsThemToView()
     {
+        $filter = new Filter();
         $events = new \SplObjectStorage();
         $events->attach(new Event());
         $categories = '1,5,12';
@@ -76,20 +132,31 @@ class EventControllerTest extends UnitTestCase
             'mergeEvents' => $mergeEvents,
         );
 
+        /** @var ObjectManager|\PHPUnit_Framework_MockObject_MockObject $eventRepository */
+        $objectManager = $this->getMock(ObjectManager::class, array('get'), array(), '', false);
+        $objectManager->expects($this->once())->method('get')->with(
+            $this->identicalTo(Filter::class)
+        )->willReturn($filter);
         /** @var \JWeiland\Events2\Domain\Repository\EventRepository|\PHPUnit_Framework_MockObject_MockObject $eventRepository */
         $eventRepository = $this->getMock('JWeiland\\Events2\\Domain\\Repository\\EventRepository', array(), array(), '', false);
         $eventRepository->expects($this->once())->method('findEvents')->with(
-            $this->identicalTo('list')
+            $this->identicalTo('list'),
+            $this->identicalTo($filter)
         )->willReturn($events);
         /** @var \TYPO3\CMS\Fluid\View\TemplateView|\PHPUnit_Framework_MockObject_MockObject $view */
-        $view = $this->getMock('TYPO3\\CMS\\Fluid\\View\\TemplateView');
-        $view->expects($this->once())->method('assign')->with(
+        $view = $this->getMock(TemplateView::class, array('assign'), array(), '', false);
+        $view->expects($this->at(0))->method('assign')->with(
+            $this->identicalTo('filter'),
+            $this->identicalTo($filter)
+        );
+        $view->expects($this->at(1))->method('assign')->with(
             $this->identicalTo('events'),
             $this->identicalTo($events)
         );
         /** @var \JWeiland\Events2\Controller\EventController|\PHPUnit_Framework_MockObject_MockObject|\TYPO3\CMS\Core\Tests\AccessibleObjectInterface $eventController */
         $eventController = $this->getAccessibleMock('JWeiland\\Events2\\Controller\\EventController', array('dummy'));
         $eventController->_set('eventRepository', $eventRepository);
+        $eventController->_set('objectManager', $objectManager);
         $eventController->_set('settings', $settings);
         $eventController->_set('view', $view);
 
@@ -101,6 +168,7 @@ class EventControllerTest extends UnitTestCase
      */
     public function listLatestActionFindEventsAndAssignsThemToView()
     {
+        $filter = new Filter();
         $events = new \SplObjectStorage();
         $events->attach(new Event());
         $categories = '1,5,12';
@@ -110,20 +178,30 @@ class EventControllerTest extends UnitTestCase
             'mergeEvents' => $mergeEvents,
         );
 
+        /** @var ObjectManager|\PHPUnit_Framework_MockObject_MockObject $eventRepository */
+        $objectManager = $this->getMock(ObjectManager::class, array('get'), array(), '', false);
+        $objectManager->expects($this->once())->method('get')->with(
+            $this->identicalTo(Filter::class)
+        )->willReturn($filter);
         /** @var \JWeiland\Events2\Domain\Repository\EventRepository|\PHPUnit_Framework_MockObject_MockObject $eventRepository */
         $eventRepository = $this->getMock('JWeiland\\Events2\\Domain\\Repository\\EventRepository', array(), array(), '', false);
         $eventRepository->expects($this->once())->method('findEvents')->with(
             $this->identicalTo('latest')
         )->willReturn($events);
         /** @var \TYPO3\CMS\Fluid\View\TemplateView|\PHPUnit_Framework_MockObject_MockObject $view */
-        $view = $this->getMock('TYPO3\\CMS\\Fluid\\View\\TemplateView');
-        $view->expects($this->once())->method('assign')->with(
+        $view = $this->getMock(TemplateView::class, array('assign'), array(), '', false);
+        $view->expects($this->at(0))->method('assign')->with(
+            $this->identicalTo('filter'),
+            $this->identicalTo($filter)
+        );
+        $view->expects($this->at(1))->method('assign')->with(
             $this->identicalTo('events'),
             $this->identicalTo($events)
         );
         /** @var \JWeiland\Events2\Controller\EventController|\PHPUnit_Framework_MockObject_MockObject|\TYPO3\CMS\Core\Tests\AccessibleObjectInterface $eventController */
         $eventController = $this->getAccessibleMock('JWeiland\\Events2\\Controller\\EventController', array('dummy'));
         $eventController->_set('eventRepository', $eventRepository);
+        $eventController->_set('objectManager', $objectManager);
         $eventController->_set('settings', $settings);
         $eventController->_set('view', $view);
 
@@ -135,6 +213,7 @@ class EventControllerTest extends UnitTestCase
      */
     public function listTodayActionFindEventsAndAssignsThemToView()
     {
+        $filter = new Filter();
         $events = new \SplObjectStorage();
         $events->attach(new Event());
         $categories = '1,5,12';
@@ -144,20 +223,30 @@ class EventControllerTest extends UnitTestCase
             'mergeEvents' => $mergeEvents,
         );
 
+        /** @var ObjectManager|\PHPUnit_Framework_MockObject_MockObject $eventRepository */
+        $objectManager = $this->getMock(ObjectManager::class, array('get'), array(), '', false);
+        $objectManager->expects($this->once())->method('get')->with(
+            $this->identicalTo(Filter::class)
+        )->willReturn($filter);
         /** @var \JWeiland\Events2\Domain\Repository\EventRepository|\PHPUnit_Framework_MockObject_MockObject $eventRepository */
         $eventRepository = $this->getMock('JWeiland\\Events2\\Domain\\Repository\\EventRepository', array(), array(), '', false);
         $eventRepository->expects($this->once())->method('findEvents')->with(
             $this->identicalTo('today')
         )->willReturn($events);
         /** @var \TYPO3\CMS\Fluid\View\TemplateView|\PHPUnit_Framework_MockObject_MockObject $view */
-        $view = $this->getMock('TYPO3\\CMS\\Fluid\\View\\TemplateView');
-        $view->expects($this->once())->method('assign')->with(
+        $view = $this->getMock(TemplateView::class, array('assign'), array(), '', false);
+        $view->expects($this->at(0))->method('assign')->with(
+            $this->identicalTo('filter'),
+            $this->identicalTo($filter)
+        );
+        $view->expects($this->at(1))->method('assign')->with(
             $this->identicalTo('events'),
             $this->identicalTo($events)
         );
         /** @var \JWeiland\Events2\Controller\EventController|\PHPUnit_Framework_MockObject_MockObject|\TYPO3\CMS\Core\Tests\AccessibleObjectInterface $eventController */
         $eventController = $this->getAccessibleMock('JWeiland\\Events2\\Controller\\EventController', array('dummy'));
         $eventController->_set('eventRepository', $eventRepository);
+        $eventController->_set('objectManager', $objectManager);
         $eventController->_set('settings', $settings);
         $eventController->_set('view', $view);
 
@@ -169,6 +258,7 @@ class EventControllerTest extends UnitTestCase
      */
     public function listThisWeekActionFindEventsAndAssignsThemToView()
     {
+        $filter = new Filter();
         $events = new \SplObjectStorage();
         $events->attach(new Event());
         $categories = '1,5,12';
@@ -178,20 +268,30 @@ class EventControllerTest extends UnitTestCase
             'mergeEvents' => $mergeEvents,
         );
 
+        /** @var ObjectManager|\PHPUnit_Framework_MockObject_MockObject $eventRepository */
+        $objectManager = $this->getMock(ObjectManager::class, array('get'), array(), '', false);
+        $objectManager->expects($this->once())->method('get')->with(
+            $this->identicalTo(Filter::class)
+        )->willReturn($filter);
         /** @var \JWeiland\Events2\Domain\Repository\EventRepository|\PHPUnit_Framework_MockObject_MockObject $eventRepository */
         $eventRepository = $this->getMock('JWeiland\\Events2\\Domain\\Repository\\EventRepository', array(), array(), '', false);
         $eventRepository->expects($this->once())->method('findEvents')->with(
             $this->identicalTo('thisWeek')
         )->willReturn($events);
         /** @var \TYPO3\CMS\Fluid\View\TemplateView|\PHPUnit_Framework_MockObject_MockObject $view */
-        $view = $this->getMock('TYPO3\\CMS\\Fluid\\View\\TemplateView');
-        $view->expects($this->once())->method('assign')->with(
+        $view = $this->getMock(TemplateView::class, array('assign'), array(), '', false);
+        $view->expects($this->at(0))->method('assign')->with(
+            $this->identicalTo('filter'),
+            $this->identicalTo($filter)
+        );
+        $view->expects($this->at(1))->method('assign')->with(
             $this->identicalTo('events'),
             $this->identicalTo($events)
         );
         /** @var \JWeiland\Events2\Controller\EventController|\PHPUnit_Framework_MockObject_MockObject|\TYPO3\CMS\Core\Tests\AccessibleObjectInterface $eventController */
         $eventController = $this->getAccessibleMock('JWeiland\\Events2\\Controller\\EventController', array('dummy'));
         $eventController->_set('eventRepository', $eventRepository);
+        $eventController->_set('objectManager', $objectManager);
         $eventController->_set('settings', $settings);
         $eventController->_set('view', $view);
 
@@ -203,6 +303,7 @@ class EventControllerTest extends UnitTestCase
      */
     public function listRangeActionFindEventsAndAssignsThemToView()
     {
+        $filter = new Filter();
         $events = new \SplObjectStorage();
         $events->attach(new Event());
         $categories = '1,5,12';
@@ -212,20 +313,30 @@ class EventControllerTest extends UnitTestCase
             'mergeEvents' => $mergeEvents,
         );
 
+        /** @var ObjectManager|\PHPUnit_Framework_MockObject_MockObject $eventRepository */
+        $objectManager = $this->getMock(ObjectManager::class, array('get'), array(), '', false);
+        $objectManager->expects($this->once())->method('get')->with(
+            $this->identicalTo(Filter::class)
+        )->willReturn($filter);
         /** @var \JWeiland\Events2\Domain\Repository\EventRepository|\PHPUnit_Framework_MockObject_MockObject $eventRepository */
         $eventRepository = $this->getMock('JWeiland\\Events2\\Domain\\Repository\\EventRepository', array(), array(), '', false);
         $eventRepository->expects($this->once())->method('findEvents')->with(
             $this->identicalTo('range')
         )->willReturn($events);
         /** @var \TYPO3\CMS\Fluid\View\TemplateView|\PHPUnit_Framework_MockObject_MockObject $view */
-        $view = $this->getMock('TYPO3\\CMS\\Fluid\\View\\TemplateView');
-        $view->expects($this->once())->method('assign')->with(
+        $view = $this->getMock(TemplateView::class, array('assign'), array(), '', false);
+        $view->expects($this->at(0))->method('assign')->with(
+            $this->identicalTo('filter'),
+            $this->identicalTo($filter)
+        );
+        $view->expects($this->at(1))->method('assign')->with(
             $this->identicalTo('events'),
             $this->identicalTo($events)
         );
         /** @var \JWeiland\Events2\Controller\EventController|\PHPUnit_Framework_MockObject_MockObject|\TYPO3\CMS\Core\Tests\AccessibleObjectInterface $eventController */
         $eventController = $this->getAccessibleMock('JWeiland\\Events2\\Controller\\EventController', array('dummy'));
         $eventController->_set('eventRepository', $eventRepository);
+        $eventController->_set('objectManager', $objectManager);
         $eventController->_set('settings', $settings);
         $eventController->_set('view', $view);
 
@@ -247,7 +358,7 @@ class EventControllerTest extends UnitTestCase
             $this->identicalTo($searchResult)
         )->willReturn($events);
         /** @var \TYPO3\CMS\Fluid\View\TemplateView|\PHPUnit_Framework_MockObject_MockObject $view */
-        $view = $this->getMock('TYPO3\\CMS\\Fluid\\View\\TemplateView');
+        $view = $this->getMock(TemplateView::class, array('assign'), array(), '', false);
         $view->expects($this->once())->method('assign')->with(
             $this->identicalTo('events'),
             $this->identicalTo($events)
@@ -265,6 +376,7 @@ class EventControllerTest extends UnitTestCase
      */
     public function listMyEventsActionFindEventsAndAssignsThemToView()
     {
+        $filter = new Filter();
         $tsfeBackup = $GLOBALS['TSFE'];
         $feUser = new \stdClass();
         $feUser->user = $user = array(
@@ -281,7 +393,7 @@ class EventControllerTest extends UnitTestCase
             $this->identicalTo(123)
         )->willReturn($events);
         /** @var \TYPO3\CMS\Fluid\View\TemplateView|\PHPUnit_Framework_MockObject_MockObject $view */
-        $view = $this->getMock('TYPO3\\CMS\\Fluid\\View\\TemplateView');
+        $view = $this->getMock(TemplateView::class, array('assign'), array(), '', false);
         $view->expects($this->once())->method('assign')->with(
             $this->identicalTo('events'),
             $this->identicalTo($events)
@@ -340,12 +452,11 @@ class EventControllerTest extends UnitTestCase
 
         $event->setDay($day);
         /** @var \TYPO3\CMS\Fluid\View\TemplateView|\PHPUnit_Framework_MockObject_MockObject $view */
-        $view = $this->getMock('TYPO3\\CMS\\Fluid\\View\\TemplateView');
+        $view = $this->getMock(TemplateView::class, array('assign'), array(), '', false);
         $view->expects($this->once())->method('assign')->with(
             $this->identicalTo('event'),
             $this->identicalTo($event)
         );
-
         /** @var \JWeiland\Events2\Controller\EventController|\PHPUnit_Framework_MockObject_MockObject|\TYPO3\CMS\Core\Tests\AccessibleObjectInterface $eventController */
         $eventController = $this->getAccessibleMock('JWeiland\\Events2\\Controller\\EventController', array('dummy'));
         $eventController->_set('eventRepository', $eventRepository);
@@ -375,7 +486,7 @@ class EventControllerTest extends UnitTestCase
 
         $event->setDay($day);
         /** @var \TYPO3\CMS\Fluid\View\TemplateView|\PHPUnit_Framework_MockObject_MockObject $view */
-        $view = $this->getMock('TYPO3\\CMS\\Fluid\\View\\TemplateView');
+        $view = $this->getMock(TemplateView::class, array('assign'), array(), '', false);
         $view->expects($this->once())->method('assign')->with(
             $this->identicalTo('event'),
             $this->identicalTo($event)
@@ -442,7 +553,7 @@ class EventControllerTest extends UnitTestCase
 
         $event->setDay($day);
         /** @var \TYPO3\CMS\Fluid\View\TemplateView|\PHPUnit_Framework_MockObject_MockObject $view */
-        $view = $this->getMock('TYPO3\\CMS\\Fluid\\View\\TemplateView');
+        $view = $this->getMock(TemplateView::class, array('assign'), array(), '', false);
         $view->expects($this->once())->method('assign')->with(
             $this->identicalTo('event'),
             $this->identicalTo($event)
@@ -511,7 +622,7 @@ class EventControllerTest extends UnitTestCase
         $categoryRepository->expects($this->once())->method('getCategories')->willReturn($categories);
 
         /** @var \TYPO3\CMS\Fluid\View\TemplateView|\PHPUnit_Framework_MockObject_MockObject $view */
-        $view = $this->getMock('TYPO3\\CMS\\Fluid\\View\\TemplateView');
+        $view = $this->getMock(TemplateView::class, array('assign'), array(), '', false);
         $view->expects($this->at(0))->method('assign')->with($this->identicalTo('event'), $this->identicalTo($event));
         $view->expects($this->at(1))->method('assign')->with($this->identicalTo('locations'), $this->identicalTo($locations));
         $view->expects($this->at(2))->method('assign')->with($this->identicalTo('selectableCategories'), $this->identicalTo($categories));
